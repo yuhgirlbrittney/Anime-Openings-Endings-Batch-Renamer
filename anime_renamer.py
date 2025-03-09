@@ -5,16 +5,17 @@ import requests
 import webbrowser
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-# Worker thread for file renaming
+# Worker thread for file renaming or previewing
 class RenameWorker(QtCore.QThread):
     logSignal = QtCore.pyqtSignal(str)
     progressSignal = QtCore.pyqtSignal(int)
     finishedSignal = QtCore.pyqtSignal()
 
-    def __init__(self, folder, title_preference, functions, parent=None):
+    def __init__(self, folder, title_preference, functions, previewMode=False, parent=None):
         super().__init__(parent)
         self.folder = folder
         self.title_preference = title_preference
+        self.previewMode = previewMode
         # Dictionary of function references from the main window
         self.get_anime_title_anilist = functions['anilist']
         self.get_anime_title_mal = functions['mal']
@@ -26,47 +27,32 @@ class RenameWorker(QtCore.QThread):
         files = [f for f in os.listdir(self.folder) if f.endswith(".webm")]
         total = len(files)
         if total == 0:
-            self.logSignal.emit("⚠️ No .webm files found in this folder. Nothing to rename.")
+            self.logSignal.emit("⚠️ No .webm files found in this folder. Nothing to process.")
             self.finishedSignal.emit()
             return
 
         for idx, filename in enumerate(files):
-            self.logSignal.emit(f"\n🔄 Processing: {filename}")
-            old_path = os.path.join(self.folder, filename)
             file_root, file_ext = os.path.splitext(filename)
-
-            # Extract anime title before common patterns
             match = re.match(r"^(.*?)[-\s]+(?:OP\d*|Opening|ED\d*|Ending)", file_root, re.IGNORECASE)
             if not match:
-                self.logSignal.emit("❌ No recognizable anime title found. Skipping...")
                 self.progressSignal.emit(idx + 1)
                 continue
 
             anime_title = match.group(1).strip()
-            self.logSignal.emit(f"🔍 Searching AniList for: {anime_title}")
             new_anime_name = self.get_anime_title_anilist(anime_title)
-
-            # Fallback to MAL if AniList fails
             if not new_anime_name:
-                self.logSignal.emit("⚠️ AniList failed. Trying MyAnimeList (MAL)...")
                 new_anime_name = self.get_anime_title_mal(anime_title)
                 if new_anime_name:
-                    self.logSignal.emit(f"🔄 Re-trying AniList with: {new_anime_name}")
                     second_attempt = self.get_anime_title_anilist(new_anime_name)
                     if second_attempt:
                         new_anime_name = second_attempt
-
             if not new_anime_name:
-                self.logSignal.emit("❌ No match found in AniList or MAL. Skipping...")
                 self.progressSignal.emit(idx + 1)
                 continue
 
-            # Format title if English is preferred
             if self.title_preference == "english":
                 new_anime_name = self.format_title_case(new_anime_name)
-            self.logSignal.emit(f"✅ Matched to: {new_anime_name}")
 
-            # Reconstruct the filename with the new anime title
             new_filename = new_anime_name + file_root[len(anime_title):]
             invalid_chars = r'[\/:*?"<>|]'
             new_filename = re.sub(invalid_chars, '', new_filename)
@@ -78,16 +64,37 @@ class RenameWorker(QtCore.QThread):
             new_filename = re.sub(r'(Opening \d+|Ending \d+).*', r'\1', new_filename, flags=re.IGNORECASE)
             new_filename += file_ext
 
-            new_path = os.path.join(self.folder, new_filename)
-            try:
-                os.rename(old_path, new_path)
-                self.logSignal.emit(f"✅ Renamed: {filename} → {new_filename}")
-            except Exception as e:
-                self.logSignal.emit(f"❌ Error renaming {filename}: {e}")
+            if self.previewMode:
+                self.logSignal.emit(f"{filename} ➡️ {new_filename}")
+            else:
+                new_path = os.path.join(self.folder, new_filename)
+                try:
+                    os.rename(os.path.join(self.folder, filename), new_path)
+                    self.logSignal.emit(f"✅ Renamed: {filename} → {new_filename}")
+                except Exception as e:
+                    self.logSignal.emit(f"❌ Error renaming {filename}: {e}")
 
             self.progressSignal.emit(idx + 1)
 
         self.finishedSignal.emit()
+
+
+# Preview Dialog Window
+class PreviewDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Filename Preview")
+        self.resize(950, 600)
+        layout = QtWidgets.QVBoxLayout(self)
+        self.textArea = QtWidgets.QTextEdit()
+        self.textArea.setReadOnly(True)
+        layout.addWidget(self.textArea)
+        closeBtn = QtWidgets.QPushButton("Close")
+        closeBtn.clicked.connect(self.close)
+        layout.addWidget(closeBtn, alignment=QtCore.Qt.AlignRight)
+
+    def appendText(self, text):
+        self.textArea.append(text)
 
 
 class AnimeRenamerWindow(QtWidgets.QMainWindow):
@@ -101,12 +108,24 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
 
         self.appFont = QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 18)
         self.setFont(self.appFont)
-
         self.darkMode = True
 
         self.headerLabel = QtWidgets.QLabel("Anime Openings & Endings Batch Renamer")
         self.headerLabel.setFont(QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 24))
         self.headerLabel.setAlignment(QtCore.Qt.AlignCenter)
+
+        # Create a toolbar in the upper left for the theme toggle
+        self.toolbar = QtWidgets.QToolBar("Theme")
+        self.toolbar.setMovable(False)
+        self.toolbar.setIconSize(QtCore.QSize(24, 24))
+        # Add the toolbar to the left side
+        self.addToolBar(QtCore.Qt.LeftToolBarArea, self.toolbar)
+        self.themeAction = QtWidgets.QAction("Toggle Theme", self)
+        self.themeAction.setCheckable(True)
+        self.themeAction.setChecked(True)  # Dark mode is default
+        self.themeAction.setText("🌙")  # Use moon icon for dark mode
+        self.themeAction.triggered.connect(self.toggleTheme)
+        self.toolbar.addAction(self.themeAction)
 
         centralWidget = QtWidgets.QWidget()
         self.setCentralWidget(centralWidget)
@@ -119,7 +138,10 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         folderLayout = QtWidgets.QHBoxLayout()
         self.folderDisplay = QtWidgets.QLabel("No folder selected")
         self.folderDisplay.setFont(self.appFont)
-        self.folderDisplay.setStyleSheet("background-color: #333; padding: 12px; border-radius: 10px; border: 2px solid #555; min-width: 420px; color: white;")
+        self.folderDisplay.setStyleSheet(
+            "background-color: #333; padding: 12px; border-radius: 10px; "
+            "border: 2px solid #555; min-width: 420px; color: white;"
+        )
         browseBtn = QtWidgets.QPushButton("Select Folder")
         browseBtn.setFixedSize(180, 65)
         browseBtn.setFont(self.appFont)
@@ -142,25 +164,14 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         languageLayout.addStretch()
         mainLayout.addLayout(languageLayout)
 
-        themeLayout = QtWidgets.QHBoxLayout()
-        self.toggleButton = QtWidgets.QPushButton("Toggle Theme")
-        self.toggleButton.setMinimumSize(160, 50)
-        self.toggleButton.setFont(self.appFont)
-        self.toggleButton.setToolTip("Toggle between light and dark mode")
-        self.toggleButton.clicked.connect(self.toggleTheme)
-        # Set the toggle button style to constant gray:
-        self.toggleButton.setStyleSheet("""
-            QPushButton {
-                background-color: #808080;
-                color: white;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #696969;
-            }
-        """)
-        themeLayout.addWidget(self.toggleButton, alignment=QtCore.Qt.AlignLeft)
-        mainLayout.addLayout(themeLayout)
+        # Horizontal layout for Preview and Start buttons
+        buttonLayout = QtWidgets.QHBoxLayout()
+        self.previewButton = QtWidgets.QPushButton("Preview Filenames")
+        self.previewButton.setFixedSize(260, 55)
+        self.previewButton.setFont(self.appFont)
+        self.previewButton.setToolTip("Click to preview new filenames without renaming")
+        self.previewButton.clicked.connect(self.previewFilenames)
+        buttonLayout.addWidget(self.previewButton, alignment=QtCore.Qt.AlignLeft)
 
         self.startBtn = QtWidgets.QPushButton("Start Renaming")
         self.startBtn.setFixedSize(260, 55)
@@ -168,7 +179,8 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         self.startBtn.setToolTip("Click to start renaming your files")
         self.startBtn.setEnabled(False)
         self.startBtn.clicked.connect(self.startRenaming)
-        mainLayout.addWidget(self.startBtn, alignment=QtCore.Qt.AlignHCenter)
+        buttonLayout.addWidget(self.startBtn, alignment=QtCore.Qt.AlignRight)
+        mainLayout.addLayout(buttonLayout)
 
         self.progressBar = QtWidgets.QProgressBar()
         self.progressBar.setFixedHeight(25)
@@ -216,7 +228,7 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         self.mascotLabel = QtWidgets.QLabel(self)
         self.mascotLabel.setScaledContents(False)
         self.mascotLabel.setStyleSheet("background: transparent;")
-        self.mascotLabel.setGeometry(700, 130, 200, 310)
+        self.mascotLabel.setGeometry(520, 107, 200, 310)
         if os.path.exists("mascot.png"):
             pixmap = QtGui.QPixmap("mascot.png")
             scaled_pixmap = pixmap.scaled(200, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
@@ -233,20 +245,13 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         self.darkMode = not self.darkMode
         if self.darkMode:
             self.applyDarkStyle()
+            self.themeAction.setText("🌙")
+            self.themeAction.setChecked(True)
         else:
             self.applyLightStyle()
-        # Reapply toggle button style to ensure it remains gray:
-        self.toggleButton.setStyleSheet("""
-            QPushButton {
-                background-color: #808080;
-                color: white;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #696969;
-            }
-        """)
-
+            self.themeAction.setText("🌞")
+            self.themeAction.setChecked(False)
+            
     def applyDarkStyle(self):
         self.headerLabel.setStyleSheet("color: white;")
         self.folderDisplay.setStyleSheet("background-color: #333; padding: 12px; border-radius: 10px; border: 2px solid #555; min-width: 420px; color: white;")
@@ -330,6 +335,43 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         self.worker.progressSignal.connect(self.updateProgress)
         self.worker.finishedSignal.connect(self.onRenameFinished)
         self.worker.start()
+
+    def previewFilenames(self):
+        folder = self.folderDisplay.text().strip()
+        if not folder or not os.path.isdir(folder):
+            QtWidgets.QMessageBox.warning(self, "Error", "Please select a valid folder.")
+            return
+
+        lang_choice = self.languageCombo.currentText()
+        self.title_preference = "english" if lang_choice.lower() == "english" else "romaji"
+
+        self.previewDialog = PreviewDialog(self)
+        self.previewDialog.show()
+
+        files = [f for f in os.listdir(folder) if f.endswith(".webm")]
+        if not files:
+            self.previewDialog.appendText("⚠️ No .webm files found in this folder.")
+            return
+        self.progressBar.setMaximum(len(files))
+
+        functions = {
+            'anilist': self.get_anime_title_anilist,
+            'mal': self.get_anime_title_mal,
+            'title_case': self.format_title_case,
+            'expand_season': self.expand_season_format,
+            'format_mal': self.format_for_mal_search
+        }
+
+        self.previewButton.setEnabled(False)
+        self.worker = RenameWorker(folder, self.title_preference, functions, previewMode=True)
+        self.worker.logSignal.connect(self.previewDialog.appendText)
+        self.worker.progressSignal.connect(self.updateProgress)
+        self.worker.finishedSignal.connect(self.onPreviewFinished)
+        self.worker.start()
+
+    def onPreviewFinished(self):
+        self.previewDialog.appendText("Preview complete!")
+        self.previewButton.setEnabled(True)
 
     def appendLog(self, message):
         self.logTextEdit.append(message)
