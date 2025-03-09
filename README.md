@@ -1,10 +1,10 @@
-# Anime Openings & Endings Batch Renamer
-## Made by: yuhgirlbrittney
+#Anime Openings & Endings Batch Renamer
+##Made by: yuhgirlbrittney
 
-### Version 1.10 (Future Updates to Come)
+###Version 1.10 (Future Updates to Come)
 A user-friendly PyQt-based application that automatically renames your anime opening and ending files to more standardized and descriptive titles. This tool leverages AniList and MAL APIs to retrieve the proper anime titles based on your chosen language preference.
 
-## Overview
+##Overview
 Anime Openings & Endings Batch Renamer makes it easy to:
 - Batch Process Files: Quickly rename multiple .webm, .mp4, .mkv, and .avi files.
 - Standardize File Names: Replace inconsistent file names with a uniform format.
@@ -13,31 +13,31 @@ Anime Openings & Endings Batch Renamer makes it easy to:
 - Customize Appearance: Switch between dark and light themes through the settings.
 - Support the Developer: A built-in Ko‑fi button lets you support further development.
 
-## Features
+##Features
 - Automatic Renaming: Uses AniList and MAL to find the correct anime title.
 - Preview Mode: View a before-and-after list of filenames before applying changes.
 - Theme Support: Easily switch between Dark and Light modes via the Settings dialog.
 - Accessible UI: Designed with accessibility in mind (screen reader integration and clear controls).
 - Resource Bundling: All images and resources are bundled with the application.
 
-## Installation
+##Installation
 ##For End Users (One‑Click Installer)
-# 1. Download the Installer:
+#1. Download the Installer:
 Download the AnimeRenamerInstaller.exe from our website or repository.
-# 2. Run the Installer:
+#2. Run the Installer:
 Double-click the installer to launch it. Follow the on-screen instructions:
 - Choose the installation folder (the default is typically fine).
 - Optionally, select to create a desktop shortcut.
 - Click "Install" to complete the installation.
-# 3. Launch the Application:
+#3. Launch the Application:
 Once the installation is complete, you can launch the application from the Start menu or desktop shortcut. The app works out of the box—no additional setup is required.
 
-## For Developers
+##For Developers
 If you need to build or modify the application yourself, follow these steps:
-# 1. Set Up Your Development Environment:
+#1. Set Up Your Development Environment:
 - Ensure you have Python 3.x installed.
 - Download or clone the project folder.
-# 2. Install Dependencies:
+#2. Install Dependencies:
 - Open a command prompt in the project directory.
 - (Optional) Create and activate a virtual environment:
 ```
@@ -50,11 +50,11 @@ venv\Scripts\activate
 python install_dependencies.py
 ```
 - This will install required packages (e.g., PyQt5 and requests).
-# 3. Run the Application from Source:
+#3. Run the Application from Source:
 ```
 python anime_renamer.py
 ```
-# 4. Package the Application with PyInstaller:
+#4. Package the Application with PyInstaller:
 - Install PyInstaller if you haven’t already:
 ```
 pip install pyinstaller
@@ -64,30 +64,30 @@ pip install pyinstaller
 pyinstaller --onefile --windowed --icon "myicon.ico" --add-data "mascot.png;." --add-data "mad.png;." --add-data "sad.png;." --add-data "pat.png;." --add-data "kofi_symbol.png;." anime_renamer.py
 ```
 - The executable will be created in the dist folder.
-# 5. Create a One‑Click Installer with Inno Setup:
+#5. Create a One‑Click Installer with Inno Setup:
 - Download and install Inno Setup.
 - Create an Inno Setup script (e.g., setup.iss) using the provided template.
 - Open Inno Setup Compiler, load your script, and compile it to produce AnimeRenamerInstaller.exe.
 
-## Usage
-# 1. Launch the Application:
+##Usage
+#1. Launch the Application:
 Run the executable or the source file.
-# 2. Select a Folder:
+#2. Select a Folder:
 Click on the "Select Folder" button to choose a directory containing your anime .webm files.
-# 3. Choose Title Language:
+#3. Choose Title Language:
 Select your preferred title language (English or Japanese) from the dropdown.
-# 4. Preview Changes (Optional):
+#4. Preview Changes (Optional):
 Click "Preview Filenames" to view the proposed new names.
-# 5. Start Renaming:
+#5. Start Renaming:
 Once satisfied with the preview, click "Start Renaming" to apply the changes.
-# 6. Support the Developer:
+#6. Support the Developer:
 Click the Ko‑fi button to support further development.
 
-## Note
-# Thank you so much for checking out my software. I hope I was able to help you out - even if it was just a little bit! Happy renaming & have a fantastic day! :)
+##Note
+#Thank you so much for checking out my software. I hope I was able to help you out - even if it was just a little bit! Happy renaming & have a fantastic day! :)
 
-## License
-# MIT License
+##License
+#MIT License
 
 Copyright (c) 2025 yuhgirlbrittney
 
