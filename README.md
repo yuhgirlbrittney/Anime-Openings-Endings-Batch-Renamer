@@ -21,7 +21,7 @@ Anime Openings & Endings Batch Renamer makes it easy to:
 - Resource Bundling: All images and resources are bundled with the application.
 
 ## Installation
-##For End Users (One‑Click Installer)
+## For End Users (One‑Click Installer)
 # 1. Download the Installer:
 Download the AnimeRenamerInstaller.exe from our website or repository.
 # 2. Run the Installer:
