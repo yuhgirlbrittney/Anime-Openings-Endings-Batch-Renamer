@@ -29,7 +29,7 @@ Double-click the installer to launch it. Follow the on-screen instructions:
 - Choose the installation folder (the default is typically fine).
 - Optionally, select to create a desktop shortcut.
 - Click "Install" to complete the installation.
-#3. Launch the Application:
+# 3. Launch the Application:
 Once the installation is complete, you can launch the application from the Start menu or desktop shortcut. The app works out of the box—no additional setup is required.
 
 ## For Developers
