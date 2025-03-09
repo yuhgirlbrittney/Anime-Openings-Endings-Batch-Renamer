@@ -5,7 +5,7 @@ import requests
 import webbrowser
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-# Worker thread for file renaming or previewing
+# -------------------- Worker Thread --------------------
 class RenameWorker(QtCore.QThread):
     logSignal = QtCore.pyqtSignal(str)
     progressSignal = QtCore.pyqtSignal(int)
@@ -16,7 +16,7 @@ class RenameWorker(QtCore.QThread):
         self.folder = folder
         self.title_preference = title_preference
         self.previewMode = previewMode
-        # Dictionary of function references from the main window
+        # functions: dict with keys 'anilist', 'mal', 'title_case', 'expand_season', 'format_mal'
         self.get_anime_title_anilist = functions['anilist']
         self.get_anime_title_mal = functions['mal']
         self.format_title_case = functions['title_case']
@@ -79,7 +79,7 @@ class RenameWorker(QtCore.QThread):
         self.finishedSignal.emit()
 
 
-# Preview Dialog Window
+# -------------------- Preview Dialog --------------------
 class PreviewDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -97,53 +97,105 @@ class PreviewDialog(QtWidgets.QDialog):
         self.textArea.append(text)
 
 
+# -------------------- Settings Dialog --------------------
+class SettingsDialog(QtWidgets.QDialog):
+    def __init__(self, current_settings, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preferences")
+        self.resize(400, 250)
+        layout = QtWidgets.QFormLayout(self)
+
+        self.apiPriorityCombo = QtWidgets.QComboBox()
+        self.apiPriorityCombo.addItems(["AniList", "MAL", "Auto"])
+        self.apiPriorityCombo.setCurrentText(current_settings.get("api_priority", "Auto"))
+        layout.addRow("API Priority:", self.apiPriorityCombo)
+
+        self.languageCombo = QtWidgets.QComboBox()
+        self.languageCombo.addItems(["English", "Spanish", "Japanese"])
+        self.languageCombo.setCurrentText(current_settings.get("interface_language", "English"))
+        layout.addRow("Interface Language:", self.languageCombo)
+
+        self.themeCombo = QtWidgets.QComboBox()
+        self.themeCombo.addItems(["Dark", "Light"])
+        current_theme = current_settings.get("theme_mode", "Dark")
+        self.themeCombo.setCurrentText(current_theme)
+        layout.addRow("Theme:", self.themeCombo)
+
+        buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        layout.addWidget(buttonBox)
+
+    def getSettings(self):
+        return {
+            "api_priority": self.apiPriorityCombo.currentText(),
+            "interface_language": self.languageCombo.currentText(),
+            "theme_mode": self.themeCombo.currentText()
+        }
+
+
+# -------------------- Main Window --------------------
 class AnimeRenamerWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Anime Openings & Endings Batch Renamer")
-        self.setFixedSize(950, 600)
+        self.setFixedSize(1600, 800)
+        self.setGeometry(100, 100, 1600, 800)
 
         if os.path.exists("mascot.png"):
             self.setWindowIcon(QtGui.QIcon("mascot.png"))
 
         self.appFont = QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 18)
         self.setFont(self.appFont)
-        self.darkMode = True
 
-        self.headerLabel = QtWidgets.QLabel("Anime Openings & Endings Batch Renamer")
-        self.headerLabel.setFont(QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 24))
-        self.headerLabel.setAlignment(QtCore.Qt.AlignCenter)
+        # QSettings
+        self.settings = QtCore.QSettings("MyOrganization", "AnimeRenamer")
+        self.loadSettings()
+        self.apiPriority = self.settings.value("api_priority", "Auto")
+        self.interface_language = self.settings.value("interface_language", "English")
+        self.theme_mode = self.settings.value("theme_mode", "Dark")
 
-        # Create a toolbar in the upper left for the theme toggle
-        self.toolbar = QtWidgets.QToolBar("Theme")
-        self.toolbar.setMovable(False)
-        self.toolbar.setIconSize(QtCore.QSize(24, 24))
-        # Add the toolbar to the left side
-        self.addToolBar(QtCore.Qt.LeftToolBarArea, self.toolbar)
-        self.themeAction = QtWidgets.QAction("Toggle Theme", self)
-        self.themeAction.setCheckable(True)
-        self.themeAction.setChecked(True)  # Dark mode is default
-        self.themeAction.setText("🌙")  # Use moon icon for dark mode
-        self.themeAction.triggered.connect(self.toggleTheme)
-        self.toolbar.addAction(self.themeAction)
+        self.darkMode = (self.theme_mode == "Dark")
 
+        self.setupUI()
+        if self.darkMode:
+            self.applyDarkStyle()
+        else:
+            self.applyLightStyle()
+
+        self.worker = None
+
+    def setupUI(self):
+        mainLayout = QtWidgets.QVBoxLayout()
         centralWidget = QtWidgets.QWidget()
         self.setCentralWidget(centralWidget)
-        mainLayout = QtWidgets.QVBoxLayout(centralWidget)
-        mainLayout.setContentsMargins(20, 20, 20, 5)
+        centralWidget.setLayout(mainLayout)
+        mainLayout.setContentsMargins(20, 20, 20, 20)
         mainLayout.setSpacing(20)
 
-        mainLayout.addWidget(self.headerLabel)
+        # Header row
+        headerLayout = QtWidgets.QHBoxLayout()
+        self.headerLabel = QtWidgets.QLabel("Anime Openings & Endings Batch Renamer")
+        self.headerLabel.setFont(QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 24))
+        self.headerLabel.setAlignment(QtCore.Qt.AlignLeft)
+        self.versionLabel = QtWidgets.QLabel("Version 1.10")
+        self.versionLabel.setFont(QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 14))
+        self.versionLabel.setStyleSheet("color: #888;")
+        self.versionLabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        headerLayout.addWidget(self.headerLabel)
+        headerLayout.addStretch()
+        headerLayout.addWidget(self.versionLabel)
+        mainLayout.addLayout(headerLayout)
 
+        # Folder selection row
         folderLayout = QtWidgets.QHBoxLayout()
         self.folderDisplay = QtWidgets.QLabel("No folder selected")
         self.folderDisplay.setFont(self.appFont)
         self.folderDisplay.setStyleSheet(
-            "background-color: #333; padding: 12px; border-radius: 10px; "
-            "border: 2px solid #555; min-width: 420px; color: white;"
+            "background-color: #333; padding: 12px; border-radius: 10px; border: 2px solid #555; min-width: 500px; color: white;"
         )
         browseBtn = QtWidgets.QPushButton("Select Folder")
-        browseBtn.setFixedSize(180, 65)
+        browseBtn.setFixedSize(200, 65)
         browseBtn.setFont(self.appFont)
         browseBtn.setToolTip("Select a folder containing your anime .webm files")
         browseBtn.clicked.connect(self.browseFolder)
@@ -151,6 +203,7 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         folderLayout.addWidget(browseBtn)
         mainLayout.addLayout(folderLayout)
 
+        # Title language row
         languageLayout = QtWidgets.QHBoxLayout()
         languageLabel = QtWidgets.QLabel("Title Language:")
         languageLabel.setFont(self.appFont)
@@ -164,100 +217,172 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         languageLayout.addStretch()
         mainLayout.addLayout(languageLayout)
 
-        # Horizontal layout for Preview and Start buttons
-        buttonLayout = QtWidgets.QHBoxLayout()
-        self.previewButton = QtWidgets.QPushButton("Preview Filenames")
-        self.previewButton.setFixedSize(260, 55)
+        # Bottom buttons row: Preview, Start, Settings, Ko‑fi (theme now in settings)
+        bottomButtonLayout = QtWidgets.QHBoxLayout()
+        self.previewButton = QtWidgets.QPushButton("Preview File Names")
+        self.previewButton.setFixedSize(260, 65)
         self.previewButton.setFont(self.appFont)
         self.previewButton.setToolTip("Click to preview new filenames without renaming")
         self.previewButton.clicked.connect(self.previewFilenames)
-        buttonLayout.addWidget(self.previewButton, alignment=QtCore.Qt.AlignLeft)
+        bottomButtonLayout.addWidget(self.previewButton)
 
         self.startBtn = QtWidgets.QPushButton("Start Renaming")
-        self.startBtn.setFixedSize(260, 55)
+        self.startBtn.setFixedSize(260, 65)
         self.startBtn.setFont(self.appFont)
         self.startBtn.setToolTip("Click to start renaming your files")
         self.startBtn.setEnabled(False)
         self.startBtn.clicked.connect(self.startRenaming)
-        buttonLayout.addWidget(self.startBtn, alignment=QtCore.Qt.AlignRight)
-        mainLayout.addLayout(buttonLayout)
+        bottomButtonLayout.addWidget(self.startBtn)
 
-        self.progressBar = QtWidgets.QProgressBar()
-        self.progressBar.setFixedHeight(25)
-        self.progressBar.setValue(0)
-        self.progressBar.setStyleSheet("QProgressBar { background-color: #333; border: 2px solid #555; border-radius: 10px; text-align: center; color: white; } QProgressBar::chunk { background-color: #007acc; border-radius: 8px; }")
-        mainLayout.addWidget(self.progressBar)
-
-        self.logTextEdit = QtWidgets.QTextEdit()
-        self.logTextEdit.setReadOnly(True)
-        self.logTextEdit.setFixedHeight(100)
-        self.logTextEdit.setFont(self.appFont)
-        self.logTextEdit.setStyleSheet("border: 2px solid #555; padding: 12px; background-color: #252526; color: white;")
-        mainLayout.addWidget(self.logTextEdit)
-
-        mainLayout.addSpacing(20)
-
-        bottomLayout = QtWidgets.QHBoxLayout()
-        self.tipButton = QtWidgets.QPushButton("Support me on Ko-fi")
-        self.tipButton.setFont(QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 16, QtGui.QFont.Bold))
-        self.tipButton.setFixedSize(260, 55)
-        self.tipButton.setToolTip("Click to support me on Ko-fi!")
-        self.tipButton.clicked.connect(self.openDonationPage)
-        self.tipButton.setStyleSheet("""
+        self.settingsButton = QtWidgets.QPushButton("Settings")
+        self.settingsButton.setFixedSize(180, 65)
+        self.settingsButton.setFont(self.appFont)
+        self.settingsButton.setToolTip("Change preferences")
+        self.settingsButton.clicked.connect(self.openSettings)
+        self.settingsButton.setStyleSheet("""
             QPushButton {
-                background-color: #9c27b0;
+                background-color: #FF6433;
                 color: white;
                 border-radius: 12px;
-                padding: 14px;
                 font-size: 18px;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #7b1fa2;
-            }
+            QPushButton:hover { background-color: #E0552A; }
         """)
-        bottomLayout.addWidget(self.tipButton, alignment=QtCore.Qt.AlignLeft)
-        bottomLayout.addStretch()
-        self.versionLabel = QtWidgets.QLabel("Version 1.0.0")
-        self.versionLabel.setFont(QtGui.QFont("AtkinsonHyperlegibleMono-Bold", 14))
-        self.versionLabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.versionLabel.setStyleSheet("color: #888;")
-        bottomLayout.addWidget(self.versionLabel, alignment=QtCore.Qt.AlignRight)
-        mainLayout.addLayout(bottomLayout)
+        bottomButtonLayout.addWidget(self.settingsButton)
 
-        self.mascotLabel = QtWidgets.QLabel(self)
-        self.mascotLabel.setScaledContents(False)
-        self.mascotLabel.setStyleSheet("background: transparent;")
-        self.mascotLabel.setGeometry(520, 107, 200, 310)
+        self.koFiButton = QtWidgets.QToolButton()
+        self.koFiButton.setToolTip("Support me on Ko‑fi!")
+        self.koFiButton.setFixedSize(60, 65)
+        if os.path.exists("kofi_symbol.png"):
+            icon = QtGui.QIcon("kofi_symbol.png")
+            self.koFiButton.setIcon(icon)
+            self.koFiButton.setIconSize(QtCore.QSize(60,65))
+            self.koFiButton.setText("")
+        else:
+            self.koFiButton.setText("☕")
+        self.koFiButton.setStyleSheet("QToolButton { background: transparent; border: none; }")
+        self.koFiButton.clicked.connect(lambda: webbrowser.open("https://ko-fi.com/yuhgirlbrittney"))
+        bottomButtonLayout.addWidget(self.koFiButton)
+
+        bottomButtonLayout.addStretch()
+        mainLayout.addLayout(bottomButtonLayout)
+
+        # Progress bar row
+        self.progressBar = QtWidgets.QProgressBar()
+        self.progressBar.setFixedHeight(30)
+        self.progressBar.setValue(0)
+        self.progressBar.setStyleSheet(
+            "QProgressBar { background-color: #333; border: 2px solid #555; border-radius: 10px; text-align: center; color: white; }"
+            "QProgressBar::chunk { background-color: #FF6433; border-radius: 8px; }"
+        )
+        mainLayout.addWidget(self.progressBar)
+
+        # Final row: Horizontal layout with Log box (left) and Mascot Interaction Panel (right)
+        finalRowWidget = QtWidgets.QWidget()
+        finalRowLayout = QtWidgets.QHBoxLayout(finalRowWidget)
+        finalRowLayout.setContentsMargins(0, 0, 0, 0)
+
+        # Left: Log text edit
+        self.logTextEdit = QtWidgets.QTextEdit()
+        self.logTextEdit.setReadOnly(True)
+        self.logTextEdit.setFont(self.appFont)
+        self.logTextEdit.setStyleSheet("border: 2px solid #555; padding: 12px; background-color: #252526; color: white;")
+        finalRowLayout.addWidget(self.logTextEdit, stretch=3)
+
+        # Right: Mascot Interaction Panel
+        rightPanel = QtWidgets.QWidget()
+        rightPanelLayout = QtWidgets.QVBoxLayout(rightPanel)
+        rightPanelLayout.setContentsMargins(20, 0, 0, 0)
+        rightPanelLayout.setSpacing(20)
+
+        self.mascotDisplay = QtWidgets.QLabel()
         if os.path.exists("mascot.png"):
             pixmap = QtGui.QPixmap("mascot.png")
-            scaled_pixmap = pixmap.scaled(200, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-            self.mascotLabel.setPixmap(scaled_pixmap)
+            scaled_pixmap = pixmap.scaled(150, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            self.mascotDisplay.setPixmap(scaled_pixmap)
+        self.mascotDisplay.setFixedSize(150, 150)
+        rightPanelLayout.addWidget(self.mascotDisplay, alignment=QtCore.Qt.AlignCenter)
 
-        self.applyDarkStyle()
+        buttonSize = QtCore.QSize(180, 50)
+        self.pokeButton = QtWidgets.QPushButton("Poke")
+        self.pokeButton.setFixedSize(buttonSize)
+        self.pokeButton.clicked.connect(lambda: self.changeMascot("mad.png"))
+        rightPanelLayout.addWidget(self.pokeButton, alignment=QtCore.Qt.AlignCenter)
 
-        self.lowercase_words = {"a", "an", "and", "as", "at", "but", "by", "for", "in", "nor",
-                                "of", "on", "or", "so", "the", "to", "up", "yet"}
+        self.bullyButton = QtWidgets.QPushButton("Bully")
+        self.bullyButton.setFixedSize(buttonSize)
+        self.bullyButton.clicked.connect(lambda: self.changeMascot("sad.png"))
+        rightPanelLayout.addWidget(self.bullyButton, alignment=QtCore.Qt.AlignCenter)
 
-        self.worker = None
+        self.headPatButton = QtWidgets.QPushButton("Head Pat")
+        self.headPatButton.setFixedSize(buttonSize)
+        self.headPatButton.clicked.connect(lambda: self.changeMascot("pat.png"))
+        rightPanelLayout.addWidget(self.headPatButton, alignment=QtCore.Qt.AlignCenter)
+
+        rightPanelLayout.addStretch()
+        finalRowLayout.addWidget(rightPanel, stretch=1)
+
+        mainLayout.addWidget(finalRowWidget, stretch=1)
+
+    def changeMascot(self, imagePath):
+        if os.path.exists(imagePath):
+            pixmap = QtGui.QPixmap(imagePath)
+            scaled_pixmap = pixmap.scaled(150, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            self.mascotDisplay.setPixmap(scaled_pixmap)
+            QtCore.QTimer.singleShot(1000, self.restoreMascot)
+
+    def restoreMascot(self):
+        if os.path.exists("mascot.png"):
+            pixmap = QtGui.QPixmap("mascot.png")
+            scaled_pixmap = pixmap.scaled(150, 150, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            self.mascotDisplay.setPixmap(scaled_pixmap)
+
+    def loadSettings(self):
+        font_size = self.settings.value("font_size", 18, type=int)
+        self.appFont.setPointSize(font_size)
+        self.setFont(self.appFont)
+        self.apiPriority = self.settings.value("api_priority", "Auto")
+        self.interface_language = self.settings.value("interface_language", "English")
+        self.theme_mode = self.settings.value("theme_mode", "Dark")
+
+    def openSettings(self):
+        current = {
+            "api_priority": self.apiPriority,
+            "interface_language": self.interface_language,
+            "theme_mode": self.theme_mode
+        }
+        dlg = SettingsDialog(current, self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            new_settings = dlg.getSettings()
+            self.settings.setValue("api_priority", new_settings["api_priority"])
+            self.settings.setValue("interface_language", new_settings.get("interface_language", "English"))
+            self.settings.setValue("theme_mode", new_settings.get("theme_mode", "Dark"))
+            self.apiPriority = new_settings["api_priority"]
+            self.interface_language = new_settings["interface_language"]
+            self.theme_mode = new_settings["theme_mode"]
+            if self.theme_mode == "Dark":
+                self.darkMode = True
+                self.applyDarkStyle()
+            else:
+                self.darkMode = False
+                self.applyLightStyle()
 
     def toggleTheme(self):
-        self.darkMode = not self.darkMode
-        if self.darkMode:
-            self.applyDarkStyle()
-            self.themeAction.setText("🌙")
-            self.themeAction.setChecked(True)
-        else:
-            self.applyLightStyle()
-            self.themeAction.setText("🌞")
-            self.themeAction.setChecked(False)
-            
+        # This function is no longer used because theme is set in settings.
+        pass
+
     def applyDarkStyle(self):
         self.headerLabel.setStyleSheet("color: white;")
-        self.folderDisplay.setStyleSheet("background-color: #333; padding: 12px; border-radius: 10px; border: 2px solid #555; min-width: 420px; color: white;")
-        self.progressBar.setStyleSheet("QProgressBar { background-color: #333; border: 2px solid #555; border-radius: 10px; text-align: center; color: white; } QProgressBar::chunk { background-color: #007acc; border-radius: 8px; }")
+        self.folderDisplay.setStyleSheet(
+            "background-color: #333; padding: 12px; border-radius: 10px; border: 2px solid #555; min-width: 500px; color: white;"
+        )
+        self.progressBar.setStyleSheet(
+            "QProgressBar { background-color: #333; border: 2px solid #555; border-radius: 10px; text-align: center; color: white; }"
+            "QProgressBar::chunk { background-color: #FF6433; border-radius: 8px; }"
+        )
         self.logTextEdit.setStyleSheet("border: 2px solid #555; padding: 12px; background-color: #252526; color: white;")
-        styleSheet = """
+        self.setStyleSheet("""
         QMainWindow { background-color: #1e1e1e; }
         QWidget { background-color: #1e1e1e; color: white; font-family: 'AtkinsonHyperlegibleMono-Bold'; font-size: 18px; }
         QLabel { color: white; font-size: 18px; font-weight: bold; }
@@ -271,15 +396,19 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         QScrollBar:horizontal { background-color: #333; height: 10px; margin: 0; border: none; border-radius: 5px; }
         QScrollBar::handle:horizontal { background-color: #007acc; min-width: 20px; border-radius: 5px; }
         QScrollBar::handle:horizontal:hover { background-color: #005f99; }
-        """
-        self.setStyleSheet(styleSheet)
+        """)
 
     def applyLightStyle(self):
         self.headerLabel.setStyleSheet("color: black;")
-        self.folderDisplay.setStyleSheet("background-color: #e0e0e0; padding: 12px; border-radius: 10px; border: 2px solid #ccc; min-width: 420px; color: black;")
-        self.progressBar.setStyleSheet("QProgressBar { background-color: #e0e0e0; border: 2px solid #ccc; border-radius: 10px; text-align: center; color: black; } QProgressBar::chunk { background-color: #007acc; border-radius: 8px; }")
+        self.folderDisplay.setStyleSheet(
+            "background-color: #e0e0e0; padding: 12px; border-radius: 10px; border: 2px solid #ccc; min-width: 500px; color: black;"
+        )
+        self.progressBar.setStyleSheet(
+            "QProgressBar { background-color: #e0e0e0; border: 2px solid #ccc; border-radius: 10px; text-align: center; color: black; }"
+            "QProgressBar::chunk { background-color: #FF6433; border-radius: 8px; }"
+        )
         self.logTextEdit.setStyleSheet("border: 2px solid #ccc; padding: 12px; background-color: #f5f5f5; color: black;")
-        styleSheet = """
+        self.setStyleSheet("""
         QMainWindow { background-color: #ffffff; }
         QWidget { background-color: #ffffff; color: #000000; font-family: 'AtkinsonHyperlegibleMono-Bold'; font-size: 18px; }
         QLabel { color: #000000; font-size: 18px; font-weight: bold; }
@@ -293,8 +422,7 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         QScrollBar:horizontal { background-color: #f0f0f0; height: 10px; margin: 0; border: none; border-radius: 5px; }
         QScrollBar::handle:horizontal { background-color: #007acc; min-width: 20px; border-radius: 5px; }
         QScrollBar::handle:horizontal:hover { background-color: #005f99; }
-        """
-        self.setStyleSheet(styleSheet)
+        """)
 
     def browseFolder(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Folder")
@@ -383,9 +511,6 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         self.logTextEdit.append("Renaming complete!")
         self.startBtn.setEnabled(True)
 
-    def openDonationPage(self):
-        webbrowser.open("https://ko-fi.com/yuhgirlbrittney")
-
     def get_anime_title_anilist(self, query):
         url = "https://graphql.anilist.co"
         query_graphql = '''
@@ -431,7 +556,8 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         return title.strip()
 
     def format_title_case(self, title):
-        lowercase_words = {"a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "so", "the", "to", "up", "yet"}
+        lowercase_words = {"a", "an", "and", "as", "at", "but", "by", "for", "in", "nor",
+                           "of", "on", "or", "so", "the", "to", "up", "yet"}
         words = title.split()
         if not words:
             return title
@@ -445,12 +571,41 @@ class AnimeRenamerWindow(QtWidgets.QMainWindow):
         filename = re.sub(r'S(\d+)\b', r'Season \1', filename, flags=re.IGNORECASE)
         return filename
 
+    def loadSettings(self):
+        font_size = self.settings.value("font_size", 18, type=int)
+        self.appFont.setPointSize(font_size)
+        self.setFont(self.appFont)
+        self.apiPriority = self.settings.value("api_priority", "Auto")
+        self.interface_language = self.settings.value("interface_language", "English")
+        self.theme_mode = self.settings.value("theme_mode", "Dark")
 
-if sys.platform == "win32":
-    import ctypes
-    ctypes.windll.kernel32.FreeConsole()
+    def openSettings(self):
+        current = {
+            "api_priority": self.apiPriority,
+            "interface_language": self.interface_language,
+            "theme_mode": self.theme_mode
+        }
+        dlg = SettingsDialog(current, self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            new_settings = dlg.getSettings()
+            self.settings.setValue("api_priority", new_settings["api_priority"])
+            self.settings.setValue("interface_language", new_settings.get("interface_language", "English"))
+            self.settings.setValue("theme_mode", new_settings.get("theme_mode", "Dark"))
+            self.apiPriority = new_settings["api_priority"]
+            self.interface_language = new_settings["interface_language"]
+            self.theme_mode = new_settings["theme_mode"]
+            if self.theme_mode == "Dark":
+                self.darkMode = True
+                self.applyDarkStyle()
+            else:
+                self.darkMode = False
+                self.applyLightStyle()
 
 if __name__ == "__main__":
+    # Remove console window on Windows
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.FreeConsole()
     app = QtWidgets.QApplication(sys.argv)
     window = AnimeRenamerWindow()
     window.show()
